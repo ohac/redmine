@@ -16,6 +16,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 require 'redmine/scm/adapters/abstract_adapter'
+require 'cgi'
 
 module Redmine
   module Scm
@@ -28,6 +29,21 @@ module Redmine
         TEMPLATE_NAME = "hg-template"
         TEMPLATE_EXTENSION = "tmpl"
         
+        def clone_and_update
+          targeturl = target('')
+          workdir = File.join("tmp", CGI.escape(targeturl))
+          if File.exists? workdir
+            return workdir if @inarow
+            @inarow = true
+            cmd = "#{HG_BIN} -R #{workdir} pull -u"
+          else
+            cmd = "#{HG_BIN} clone #{targeturl} #{workdir}"
+          end
+          shellout(cmd) do |io|
+          end
+          workdir
+        end
+
         class << self
           def client_version
             @@client_version ||= (hgversion || [])
@@ -62,7 +78,8 @@ module Redmine
         end
         
         def info
-          cmd = "#{HG_BIN} -R #{target('')} root"
+          workdir = clone_and_update
+          cmd = "#{HG_BIN} -R #{workdir} root"
           root_url = nil
           shellout(cmd) do |io|
             root_url = io.read
@@ -77,9 +94,10 @@ module Redmine
         end
         
         def entries(path=nil, identifier=nil)
+          workdir = clone_and_update
           path ||= ''
           entries = Entries.new
-          cmd = "#{HG_BIN} -R #{target('')} --cwd #{target('')} locate"
+          cmd = "#{HG_BIN} -R #{workdir} locate"
           cmd << " -r " + (identifier ? identifier.to_s : "tip")
           cmd << " " + shell_quote("path:#{path}") unless path.empty?
           shellout(cmd) do |io|
@@ -89,9 +107,12 @@ module Redmine
               if path.empty? or e = line.gsub!(%r{^#{with_trailling_slash(path)}},'')
                 e ||= line
                 e = e.chomp.split(%r{[\/\\]})
+                epath = workdir.clone
+                size = File.size("#{epath}/#{e.first}")
                 entries << Entry.new({:name => e.first,
                                        :path => (path.nil? or path.empty? ? e.first : "#{with_trailling_slash(path)}#{e.first}"),
                                        :kind => (e.size > 1 ? 'dir' : 'file'),
+                                       :size => size,
                                        :lastrev => Revision.new
                                      }) unless e.empty? || entries.detect{|entry| entry.name == e.first}
               end
@@ -104,8 +125,9 @@ module Redmine
         # Fetch the revisions by using a template file that 
         # makes Mercurial produce a xml output.
         def revisions(path=nil, identifier_from=nil, identifier_to=nil, options={})  
+          workdir = clone_and_update
           revisions = Revisions.new
-          cmd = "#{HG_BIN} --debug --encoding utf8 -R #{target('')} log -C --style #{shell_quote self.class.template_path}"
+          cmd = "#{HG_BIN} --debug --encoding utf8 -R #{workdir} log -C --style #{shell_quote self.class.template_path}"
           if identifier_from && identifier_to
             cmd << " -r #{identifier_from.to_i}:#{identifier_to.to_i}"
           elsif identifier_from
@@ -151,14 +173,15 @@ module Redmine
         end
         
         def diff(path, identifier_from, identifier_to=nil)
+          workdir = clone_and_update
           path ||= ''
           if identifier_to
             identifier_to = identifier_to.to_i 
           else
             identifier_to = identifier_from.to_i - 1
           end
-          cmd = "#{HG_BIN} -R #{target('')} diff -r #{identifier_to} -r #{identifier_from} --nodates"
-          cmd << " -I #{target(path)}" unless path.empty?
+          cmd = "#{HG_BIN} -R #{workdir} diff -r #{identifier_to} -r #{identifier_from} --nodates"
+          cmd << " -I #{workdir}/#{path}" unless path.empty?
           diff = []
           shellout(cmd) do |io|
             io.each_line do |line|
@@ -170,9 +193,10 @@ module Redmine
         end
         
         def cat(path, identifier=nil)
-          cmd = "#{HG_BIN} -R #{target('')} cat"
+          workdir = clone_and_update
+          cmd = "#{HG_BIN} -R #{workdir} cat"
           cmd << " -r " + (identifier ? identifier.to_s : "tip")
-          cmd << " #{target(path)}"
+          cmd << " #{workdir}/#{path}"
           cat = nil
           shellout(cmd) do |io|
             io.binmode
@@ -183,12 +207,13 @@ module Redmine
         end
         
         def annotate(path, identifier=nil)
+          workdir = clone_and_update
           path ||= ''
-          cmd = "#{HG_BIN} -R #{target('')}"
+          cmd = "#{HG_BIN} -R #{workdir}"
           cmd << " annotate -n -u"
           cmd << " -r " + (identifier ? identifier.to_s : "tip")
           cmd << " -r #{identifier.to_i}" if identifier
-          cmd << " #{target(path)}"
+          cmd << " #{workdir}/#{path}"
           blame = Annotate.new
           shellout(cmd) do |io|
             io.each_line do |line|
