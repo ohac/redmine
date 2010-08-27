@@ -104,11 +104,11 @@ module Redmine
             io.each_line do |line|
               # HG uses antislashs as separator on Windows
               line = line.gsub(/\\/, "/")
-              if path.empty? or e = line.gsub!(%r{^#{with_trailling_slash(path)}},'')
+              if path.empty? or e = line.gsub!(%r{^#{with_trailling_slash(workdir)}#{with_trailling_slash(path)}},'')
                 e ||= line
                 e = e.chomp.split(%r{[\/\\]})
                 epath = workdir.clone
-                size = File.size("#{epath}/#{e.first}")
+                size = File.size("#{epath}/#{path}/#{e.first}")
                 entries << Entry.new({:name => e.first,
                                        :path => (path.nil? or path.empty? ? e.first : "#{with_trailling_slash(path)}#{e.first}"),
                                        :kind => (e.size > 1 ? 'dir' : 'file'),
