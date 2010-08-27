@@ -640,10 +640,16 @@ module ApplicationHelper
                                               :class => 'version'
             end
           when 'commit'
-            if project && (changeset = project.changesets.find(:first, :conditions => ["scmid LIKE ?", "#{name}%"]))
-              link = link_to h("#{name}"), {:only_path => only_path, :controller => 'repositories', :action => 'revision', :id => project, :rev => changeset.revision},
-                                           :class => 'changeset',
-                                           :title => truncate_single_line(changeset.comments, :length => 100)
+            if project
+              project.self_and_descendants.each do |proj|
+                changeset = proj.changesets.find(:first, :conditions => ["scmid LIKE ?", "#{name}%"])
+                if changeset
+                  link = link_to h("#{name}"), {:only_path => only_path, :controller => 'repositories', :action => 'revision', :id => proj, :rev => changeset.revision},
+                                               :class => 'changeset',
+                                               :title => truncate_single_line(changeset.comments, :length => 100)
+                  break
+                end
+              end
             end
           when 'source', 'export'
             if project && project.repository
