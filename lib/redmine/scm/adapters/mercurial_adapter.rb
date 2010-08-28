@@ -60,7 +60,7 @@ module Redmine
           end
           
           def hgversion_from_command_line
-            %x{#{HG_BIN} --version}.match(/\(version (.*)\)/)[1]
+            %x{#{HG_BIN} --version}.lines.first.chomp.split(/[ ()]/).last
           end
           
           def template_path
