@@ -31,6 +31,8 @@ module Redmine
         
         def clone_and_update
           targeturl = target('')
+          targeturl = targeturl[1..-2]
+          return targeturl if File.exists? targeturl
           workdir = File.join("tmp", CGI.escape(targeturl))
           if File.exists? workdir
             return workdir if @inarow
